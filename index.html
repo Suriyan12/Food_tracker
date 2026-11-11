@@ -3,7 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#16a34a">
+  <meta name="theme-color" content="#f6f7f9" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0f1318" media="(prefers-color-scheme: dark)">
   <meta name="description" content="Snap a photo of your food and track calories, macros and micronutrients every day.">
   <title>Food Tracker</title>
   <link rel="manifest" href="manifest.json">
@@ -12,209 +13,291 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <header class="topbar">
-    <h1 id="title">Today</h1>
+  <!-- Icon set: one consistent 24px line-icon style -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="i-camera" viewBox="0 0 24 24"><path d="M3 8.5A1.5 1.5 0 0 1 4.5 7H7l1.5-2.5h7L17 7h2.5A1.5 1.5 0 0 1 21 8.5v10a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18.5z"/><circle cx="12" cy="13.5" r="3.5"/></symbol>
+    <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.8"/><path d="m21 16-5-5-9 9"/></symbol>
+    <symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="m13.5 6.5 4 4"/></symbol>
+    <symbol id="i-today" viewBox="0 0 24 24"><path d="M3 10.5 12 4l9 6.5"/><path d="M5.5 9v11h13V9"/><path d="M10 20v-5h4v5"/></symbol>
+    <symbol id="i-chart" viewBox="0 0 24 24"><path d="M3 20h18"/><path d="M6.5 16v-5M12 16V5M17.5 16V9"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></symbol>
+    <symbol id="i-back" viewBox="0 0 24 24"><path d="M19 12H5M11 6l-6 6 6 6"/></symbol>
+    <symbol id="i-left" viewBox="0 0 24 24"><path d="m15 5-7 7 7 7"/></symbol>
+    <symbol id="i-right" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v5h-5"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9.5 7V4.5h5V7M6 7l1 13h10l1-13"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></symbol>
+    <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V5M7 10l5-5 5 5M5 20h14"/></symbol>
+    <symbol id="i-table" viewBox="0 0 24 24"><rect x="3.5" y="4" width="17" height="16" rx="2"/><path d="M3.5 9.5h17M3.5 14.5h17M9.5 9.5V20"/></symbol>
+    <symbol id="i-warn" viewBox="0 0 24 24"><path d="M12 4 2.5 20h19z"/><path d="M12 10v4.5M12 17.2v.1"/></symbol>
+    <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></symbol>
+    <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3c.6 4.4 2.6 6.4 7 7-4.4.6-6.4 2.6-7 7-.6-4.4-2.6-6.4-7-7 4.4-.6 6.4-2.6 7-7z"/><path d="M19 15.5c.2 1.6.9 2.3 2.5 2.5-1.6.2-2.3.9-2.5 2.5-.2-1.6-.9-2.3-2.5-2.5 1.6-.2 2.3-.9 2.5-2.5z"/></symbol>
+    <symbol id="i-plate" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/></symbol>
+  </svg>
+
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <!-- Top app bar -->
+  <header class="appbar">
+    <button id="backBtn" class="icon-btn" aria-label="Back to today" hidden>
+      <svg class="ic" aria-hidden="true"><use href="#i-back"/></svg>
+    </button>
+    <h1 id="title" tabindex="-1">Food Tracker</h1>
   </header>
 
-  <main>
+  <main id="main">
     <!-- ============ TODAY ============ -->
-    <section id="view-today" class="view active">
-      <div class="datenav">
-        <button id="prevDay" class="icon-btn" aria-label="Previous day">&#8249;</button>
-        <label class="date-label">
+    <section id="view-today" class="view active" aria-labelledby="title">
+      <nav class="datenav" aria-label="Choose day">
+        <button id="prevDay" class="icon-btn" aria-label="Previous day">
+          <svg class="ic" aria-hidden="true"><use href="#i-left"/></svg>
+        </button>
+        <label class="date-chip">
           <span id="dateLabel">Today</span>
           <input type="date" id="datePicker" aria-label="Pick a date">
         </label>
-        <button id="nextDay" class="icon-btn" aria-label="Next day">&#8250;</button>
-      </div>
+        <button id="nextDay" class="icon-btn" aria-label="Next day">
+          <svg class="ic" aria-hidden="true"><use href="#i-right"/></svg>
+        </button>
+      </nav>
 
       <div class="card summary">
-        <div class="ring-wrap">
+        <div class="ring-wrap" id="ringWrap" role="img" aria-label="Calories">
           <svg viewBox="0 0 120 120" aria-hidden="true">
             <circle class="ring-bg" cx="60" cy="60" r="52"></circle>
             <circle id="ringFg" class="ring-fg" cx="60" cy="60" r="52"></circle>
           </svg>
-          <div class="ring-text">
+          <div class="ring-text" aria-hidden="true">
             <b id="calEaten">0</b>
             <span id="calGoalTxt">of 2000 kcal</span>
-            <small id="calLeft"></small>
+            <span id="calLeft" class="ring-left"></span>
           </div>
         </div>
         <div id="macroBars" class="bars"></div>
       </div>
 
-      <div class="quick-actions">
-        <button class="btn primary big" data-action="camera">&#128247; Snap food</button>
-        <button class="btn" data-action="gallery">&#128444;&#65039; Gallery</button>
-        <button class="btn" data-action="describe">&#9997;&#65039; Type it</button>
+      <div class="secondary-actions">
+        <button class="btn tonal" data-action="gallery">
+          <svg class="ic" aria-hidden="true"><use href="#i-image"/></svg>From gallery
+        </button>
+        <button class="btn tonal" data-action="describe">
+          <svg class="ic" aria-hidden="true"><use href="#i-edit"/></svg>Type it
+        </button>
       </div>
 
-      <div id="mealList"></div>
+      <div id="mealList" aria-live="polite">
+        <div class="card"><div class="skel skel-line w40"></div><div class="skel skel-row"></div><div class="skel skel-row"></div></div>
+      </div>
 
       <details class="card" id="microCard">
-        <summary>Micronutrients &amp; limits</summary>
+        <summary><h2>Micronutrients &amp; limits</h2></summary>
         <div id="microTable" class="bars"></div>
       </details>
     </section>
 
     <!-- ============ REVIEW / EDIT ============ -->
-    <section id="view-review" class="view">
+    <section id="view-review" class="view" aria-labelledby="title">
       <div class="card">
-        <img id="reviewPhoto" class="review-photo" alt="Your meal" hidden>
+        <img id="reviewPhoto" class="review-photo" alt="Photo of your meal" hidden>
+        <p id="reviewStatus" class="status" role="status" aria-live="polite"></p>
         <div id="hintBox">
-          <label class="field">Extra details (optional, improves accuracy)
-            <input id="reviewHint" placeholder="e.g. 3 idlis, sambar, cooked with ghee">
-          </label>
-          <button id="reanalyse" class="btn small">&#128260; Re-analyse with details</button>
+          <label class="field" for="reviewHint">Extra details (optional, makes it more accurate)</label>
+          <input id="reviewHint" class="input" placeholder="e.g. 3 idlis, sambar, cooked in ghee" enterkeyhint="go">
+          <button id="reanalyse" class="btn outline full">
+            <svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>Re-analyse with details
+          </button>
         </div>
-        <p id="reviewNotes" class="muted"></p>
       </div>
 
+      <h2 class="section-title">Foods</h2>
       <div id="reviewItems"></div>
 
       <div class="card">
-        <label class="field">Add a food by typing
-          <div class="row">
-            <input id="addItemText" placeholder="e.g. 1 cup tea with milk and 1 tsp sugar">
-            <button id="addItemBtn" class="btn">Add</button>
+        <label class="field" for="addItemText">Add a food by typing</label>
+        <div class="input-row">
+          <input id="addItemText" class="input" placeholder="e.g. 1 cup tea with milk and sugar" enterkeyhint="done">
+          <button id="addItemBtn" class="btn tonal" aria-label="Add typed food">
+            <svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg>Add
+          </button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="grid3">
+          <div>
+            <label class="field" for="reviewMeal">Meal</label>
+            <select id="reviewMeal" class="input">
+              <option>Breakfast</option><option>Lunch</option><option>Snacks</option><option>Dinner</option>
+            </select>
           </div>
-        </label>
+          <div>
+            <label class="field" for="reviewDate">Date</label>
+            <input type="date" id="reviewDate" class="input">
+          </div>
+          <div>
+            <label class="field" for="reviewTime">Time</label>
+            <input type="time" id="reviewTime" class="input">
+          </div>
+        </div>
       </div>
 
-      <div class="card grid3">
-        <label class="field">Meal
-          <select id="reviewMeal">
-            <option>Breakfast</option><option>Lunch</option><option>Snacks</option><option>Dinner</option>
-          </select>
-        </label>
-        <label class="field">Date <input type="date" id="reviewDate"></label>
-        <label class="field">Time <input type="time" id="reviewTime"></label>
-      </div>
-
-      <div class="card total-card">
-        <span>Meal total</span>
-        <b id="reviewTotal">0 kcal</b>
-      </div>
-
-      <div class="row actions">
-        <button id="cancelReview" class="btn">Cancel</button>
-        <button id="deleteEntry" class="btn danger" hidden>Delete</button>
-        <button id="saveReview" class="btn primary">Save meal</button>
+      <div class="action-bar">
+        <div class="action-total">
+          <span>Meal total</span>
+          <b id="reviewTotal">0 kcal</b>
+        </div>
+        <div class="action-buttons">
+          <button id="deleteEntry" class="icon-btn danger" aria-label="Delete this meal" hidden>
+            <svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg>
+          </button>
+          <button id="saveReview" class="btn filled">
+            <svg class="ic" aria-hidden="true"><use href="#i-check"/></svg><span>Save meal</span>
+          </button>
+        </div>
       </div>
     </section>
 
     <!-- ============ HISTORY ============ -->
-    <section id="view-history" class="view">
-      <div class="seg" role="tablist">
-        <button data-range="7" class="active">7 days</button>
-        <button data-range="30">30 days</button>
-        <button data-range="90">90 days</button>
+    <section id="view-history" class="view" aria-labelledby="title">
+      <div class="seg" role="radiogroup" aria-label="Time range">
+        <button role="radio" data-range="7" aria-checked="true">7 days</button>
+        <button role="radio" data-range="30" aria-checked="false">30 days</button>
+        <button role="radio" data-range="90" aria-checked="false">90 days</button>
       </div>
       <div class="card">
-        <h2 class="card-title">Calories per day</h2>
+        <h2>Calories per day</h2>
         <div id="chart"></div>
+        <div class="legend" aria-hidden="true">
+          <span><i class="sw ok"></i>Within goal</span>
+          <span><i class="sw over"></i>Over goal</span>
+          <span><i class="sw goal"></i>Goal</span>
+        </div>
         <div id="avgStats" class="stats"></div>
       </div>
+      <h2 class="section-title">Logged days</h2>
       <div id="dayList"></div>
     </section>
 
     <!-- ============ SETTINGS ============ -->
-    <section id="view-settings" class="view">
+    <section id="view-settings" class="view" aria-labelledby="title">
       <div class="card">
-        <h2 class="card-title">AI provider</h2>
-        <div class="seg" id="providerSeg">
-          <button data-provider="gemini">Google Gemini</button>
-          <button data-provider="openai">OpenAI (GPT)</button>
+        <h2>AI provider</h2>
+        <div class="seg" id="providerSeg" role="radiogroup" aria-label="AI provider">
+          <button role="radio" data-provider="gemini">Google Gemini</button>
+          <button role="radio" data-provider="openai">OpenAI (GPT)</button>
         </div>
 
-        <div id="geminiBox" class="provider-box">
-          <label class="field">Gemini API key
-            <input id="geminiKey" type="password" autocomplete="off" placeholder="Paste key from aistudio.google.com/apikey">
-          </label>
-          <label class="field">Gemini model
-            <input id="geminiModel" autocomplete="off">
-          </label>
-          <p class="muted small">Free key: <b>aistudio.google.com/apikey</b>. On the free tier Google may use your photos to improve its products.</p>
+        <div id="geminiBox">
+          <label class="field" for="geminiKey">Gemini API key</label>
+          <div class="input-row">
+            <input id="geminiKey" class="input" type="password" autocomplete="off" spellcheck="false" placeholder="Paste key from aistudio.google.com/apikey">
+            <button class="icon-btn" data-reveal="geminiKey" aria-label="Show Gemini key" aria-pressed="false">
+              <svg class="ic" aria-hidden="true"><use href="#i-eye"/></svg>
+            </button>
+          </div>
+          <label class="field" for="geminiModel">Gemini model</label>
+          <input id="geminiModel" class="input" autocomplete="off" spellcheck="false">
+          <p class="help">Free key at aistudio.google.com/apikey. On the free tier Google may use your photos to improve its products.</p>
         </div>
 
-        <div id="openaiBox" class="provider-box">
-          <label class="field">OpenAI API key
-            <input id="openaiKey" type="password" autocomplete="off" placeholder="sk-... (from platform.openai.com/api-keys)">
-          </label>
-          <label class="field">OpenAI model
-            <input id="openaiModel" autocomplete="off">
-          </label>
-          <p class="muted small">OpenAI is pay-as-you-go (no free tier). Each photo costs a fraction of a cent.</p>
+        <div id="openaiBox">
+          <label class="field" for="openaiKey">OpenAI API key</label>
+          <div class="input-row">
+            <input id="openaiKey" class="input" type="password" autocomplete="off" spellcheck="false" placeholder="sk-… from platform.openai.com/api-keys">
+            <button class="icon-btn" data-reveal="openaiKey" aria-label="Show OpenAI key" aria-pressed="false">
+              <svg class="ic" aria-hidden="true"><use href="#i-eye"/></svg>
+            </button>
+          </div>
+          <label class="field" for="openaiModel">OpenAI model</label>
+          <input id="openaiModel" class="input" autocomplete="off" spellcheck="false">
+          <p class="help">OpenAI is pay-as-you-go (no free tier). Each photo costs a fraction of a cent.</p>
         </div>
 
-        <label class="field">Your usual cuisine (optional)
-          <input id="cuisine" placeholder="e.g. South Indian home cooking">
-        </label>
-        <button id="testAI" class="btn">Test connection</button>
-        <p class="muted small">Keys are saved only on this phone, never in the app's code or on GitHub.</p>
+        <label class="field" for="cuisine">Your usual cuisine (optional)</label>
+        <input id="cuisine" class="input" placeholder="e.g. South Indian home cooking">
+        <p class="help">Keys are saved only on this phone, never in the app's code or on GitHub.</p>
+        <button id="testAI" class="btn outline full">
+          <svg class="ic" aria-hidden="true"><use href="#i-spark"/></svg><span>Test connection</span>
+        </button>
       </div>
 
       <div class="card">
-        <h2 class="card-title">Daily goals</h2>
+        <h2>Daily goals</h2>
         <div id="goalInputs" class="grid2"></div>
         <details class="calc">
-          <summary>Calculate goals for me</summary>
+          <summary><h3>Calculate goals for me</h3></summary>
           <div class="grid2">
-            <label class="field">Sex
-              <select id="pSex"><option value="male">Male</option><option value="female">Female</option></select>
-            </label>
-            <label class="field">Age <input id="pAge" type="number" inputmode="numeric" min="10" max="100"></label>
-            <label class="field">Height (cm) <input id="pHeight" type="number" inputmode="decimal" min="100" max="250"></label>
-            <label class="field">Weight (kg) <input id="pWeight" type="number" inputmode="decimal" min="25" max="300"></label>
-            <label class="field">Activity
-              <select id="pActivity">
-                <option value="1.2">Sitting most of the day</option>
-                <option value="1.375">Light (1-3 workouts/week)</option>
-                <option value="1.55">Moderate (3-5/week)</option>
-                <option value="1.725">Very active (6-7/week)</option>
-              </select>
-            </label>
-            <label class="field">Goal
-              <select id="pTarget">
+            <div><label class="field" for="pSex">Sex</label>
+              <select id="pSex" class="input"><option value="male">Male</option><option value="female">Female</option></select></div>
+            <div><label class="field" for="pAge">Age</label>
+              <input id="pAge" class="input" type="number" inputmode="numeric" min="10" max="100"></div>
+            <div><label class="field" for="pHeight">Height (cm)</label>
+              <input id="pHeight" class="input" type="number" inputmode="decimal" min="100" max="250"></div>
+            <div><label class="field" for="pWeight">Weight (kg)</label>
+              <input id="pWeight" class="input" type="number" inputmode="decimal" min="25" max="300"></div>
+            <div><label class="field" for="pActivity">Activity</label>
+              <select id="pActivity" class="input">
+                <option value="1.2">Mostly sitting</option>
+                <option value="1.375">Light (1–3 workouts/wk)</option>
+                <option value="1.55">Moderate (3–5/wk)</option>
+                <option value="1.725">Very active (6–7/wk)</option>
+              </select></div>
+            <div><label class="field" for="pTarget">Goal</label>
+              <select id="pTarget" class="input">
                 <option value="lose">Lose weight</option>
                 <option value="maintain">Maintain</option>
                 <option value="gain">Gain muscle</option>
-              </select>
-            </label>
+              </select></div>
           </div>
-          <button id="calcGoals" class="btn primary">Calculate &amp; apply</button>
+          <button id="calcGoals" class="btn filled full">Calculate &amp; apply</button>
         </details>
       </div>
 
       <div class="card">
-        <h2 class="card-title">Your data</h2>
-        <p class="muted small">Everything is stored on this phone. Export a backup regularly.</p>
-        <div class="row wrap">
-          <button id="exportJson" class="btn">Backup (JSON)</button>
-          <button id="exportCsv" class="btn">Export CSV</button>
-          <button id="importJson" class="btn">Restore backup</button>
-          <button id="clearAll" class="btn danger">Delete all data</button>
+        <h2>Your data</h2>
+        <p class="help">Everything is stored on this phone. Back up regularly so you don't lose your history.</p>
+        <div class="list">
+          <button id="exportJson" class="list-item"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg><span>Back up<small>Save a JSON file of all meals</small></span></button>
+          <button id="importJson" class="list-item"><svg class="ic" aria-hidden="true"><use href="#i-upload"/></svg><span>Restore backup<small>Load a backup file</small></span></button>
+          <button id="exportCsv" class="list-item"><svg class="ic" aria-hidden="true"><use href="#i-table"/></svg><span>Export CSV<small>Open in Excel or Google Sheets</small></span></button>
+          <button id="clearAll" class="list-item danger"><svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg><span>Delete all data<small>Cannot be undone</small></span></button>
         </div>
         <input type="file" id="importInput" accept="application/json,.json" hidden>
       </div>
-      <p class="muted small center">Estimates from photos are approximate (often within 20-30%). Adjust grams for better accuracy.</p>
+      <p class="help center">Photo estimates are approximate (often within 20–30%). Adjust grams for better accuracy.</p>
     </section>
   </main>
 
-  <nav class="tabbar">
-    <button data-tab="today" class="active"><span class="ico">&#127869;&#65039;</span><span>Today</span></button>
-    <button data-tab="history"><span class="ico">&#128202;</span><span>History</span></button>
-    <button data-tab="settings"><span class="ico">&#9881;&#65039;</span><span>Settings</span></button>
+  <!-- Primary action: extended FAB (Material) -->
+  <button id="fab" class="fab" data-action="camera">
+    <svg class="ic" aria-hidden="true"><use href="#i-camera"/></svg><span>Snap food</span>
+  </button>
+
+  <!-- Bottom navigation bar -->
+  <nav class="navbar" aria-label="Main">
+    <button class="tab" data-tab="today" aria-current="page">
+      <span class="tab-ind"><svg class="ic" aria-hidden="true"><use href="#i-today"/></svg></span><span>Today</span>
+    </button>
+    <button class="tab" data-tab="history">
+      <span class="tab-ind"><svg class="ic" aria-hidden="true"><use href="#i-chart"/></svg></span><span>History</span>
+    </button>
+    <button class="tab" data-tab="settings">
+      <span class="tab-ind"><svg class="ic" aria-hidden="true"><use href="#i-settings"/></svg></span><span>Settings</span>
+    </button>
   </nav>
 
   <input type="file" id="cameraInput" accept="image/*" capture="environment" hidden>
   <input type="file" id="galleryInput" accept="image/*" hidden>
 
-  <div id="loading" class="overlay" hidden>
-    <div class="spinner"></div>
-    <p id="loadingText">Analysing your food&hellip;</p>
+  <!-- Snackbar (Material) with optional action -->
+  <div id="snackbar" class="snackbar" role="status" aria-live="polite">
+    <span id="snackText"></span>
+    <button id="snackAction" class="snack-action" hidden></button>
   </div>
-  <div id="toast" role="status" aria-live="polite"></div>
 
   <script src="app.js"></script>
 </body>

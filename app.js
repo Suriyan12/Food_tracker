@@ -7,6 +7,8 @@
 
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
+const icon = (name, cls = '') => `<svg class="ic ${cls}" aria-hidden="true"><use href="#i-${name}"/></svg>`;
+const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 // ---------- Nutrients ----------
 // goal = default daily target (adult reference values). limit = "stay under".
@@ -37,7 +39,8 @@ const MAIN_KEYS = ['protein', 'carbs', 'fat', 'fiber', 'sugar'];
 const MICRO_KEYS = NKEYS.filter((k) => k !== 'calories' && !MAIN_KEYS.includes(k));
 const GOAL_INPUT_KEYS = ['calories', 'protein', 'carbs', 'fat', 'fiber', 'sugar'];
 const MEALS = ['Breakfast', 'Lunch', 'Snacks', 'Dinner'];
-const MEAL_ICONS = { Breakfast: '🍳', Lunch: '🍛', Snacks: '🍎', Dinner: '🍲' };
+const MACRO_COLORS = { protein: 'var(--protein)', carbs: 'var(--carbs)', fat: 'var(--fat)', fiber: 'var(--fiber)', sugar: 'var(--sugar)' };
+const UNIT_WORDS = { g: 'grams', mg: 'milligrams', mcg: 'micrograms', kcal: 'calories' };
 
 // ---------- Settings (localStorage) ----------
 const DEFAULT_SETTINGS = {
@@ -64,7 +67,7 @@ function loadSettings() {
 }
 let settings = loadSettings();
 function saveSettings() {
-  try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch { toast('Could not save settings', true); }
+  try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch { snackbar('Could not save settings. Storage may be full.', { error: true }); }
 }
 
 // ---------- IndexedDB ----------
@@ -103,7 +106,6 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '
 
 function num(v) {
   if (!isFinite(v)) return '0';
-  if (Math.abs(v) >= 100) return String(Math.round(v));
   if (Math.abs(v) >= 10) return String(Math.round(v));
   return String(Math.round(v * 10) / 10);
 }
@@ -132,21 +134,58 @@ function sumItems(items) {
   return o;
 }
 const dayTotals = (entries) => sumItems(entries.flatMap((e) => e.items));
-const macroLine = (n) => `${Math.round(n.calories)} kcal · P ${num(n.protein)}g · C ${num(n.carbs)}g · F ${num(n.fat)}g`;
+const macroText = (n) => `P ${num(n.protein)}g · C ${num(n.carbs)}g · F ${num(n.fat)}g`;
 
-let toastTimer;
-function toast(msg, isError = false) {
-  const t = $('#toast');
-  t.textContent = msg;
-  t.classList.toggle('error', isError);
-  t.classList.add('show');
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => t.classList.remove('show'), isError ? 5000 : 2500);
+// ---------- Feedback: snackbar, haptics, ripple, busy buttons ----------
+let snackTimer;
+/** Material snackbar. opts: { error, action: { label, fn } } */
+function snackbar(msg, opts = {}) {
+  const bar = $('#snackbar');
+  const btn = $('#snackAction');
+  $('#snackText').textContent = msg;
+  bar.classList.toggle('error', !!opts.error);
+  btn.hidden = !opts.action;
+  btn.onclick = null;
+  if (opts.action) {
+    btn.textContent = opts.action.label;
+    btn.onclick = () => { hideSnackbar(); opts.action.fn(); };
+  }
+  bar.classList.add('show');
+  clearTimeout(snackTimer);
+  snackTimer = setTimeout(hideSnackbar, opts.action ? 7000 : opts.error ? 5000 : 3000);
+  if (opts.error) haptic([30, 40, 30]);
 }
-function loading(on, text = 'Analysing your food…') {
-  $('#loadingText').textContent = text;
-  $('#loading').hidden = !on;
+function hideSnackbar() { $('#snackbar').classList.remove('show'); }
+
+function haptic(pattern = 10) {
+  try { if (navigator.vibrate) navigator.vibrate(pattern); } catch { /* not supported */ }
 }
+
+function setBusy(btn, busy, busyLabel) {
+  if (!btn) return;
+  btn.disabled = busy;
+  btn.setAttribute('aria-busy', busy ? 'true' : 'false');
+  const label = $('span', btn);
+  if (label && busyLabel) {
+    if (busy) { btn.dataset.label = label.textContent; label.textContent = busyLabel; }
+    else if (btn.dataset.label) label.textContent = btn.dataset.label;
+  }
+}
+
+const RIPPLE_SEL = '.btn, .icon-btn, .fab, .tab-ind, .entry, .day, .list-item, .seg button, .snack-action';
+document.addEventListener('pointerdown', (e) => {
+  if (reduceMotion) return;
+  let el = e.target.closest(RIPPLE_SEL + ', .tab');
+  if (!el || el.disabled) return;
+  if (el.classList.contains('tab')) el = $('.tab-ind', el);
+  const r = el.getBoundingClientRect();
+  const d = Math.max(r.width, r.height) * 2;
+  const s = document.createElement('span');
+  s.className = 'ripple';
+  s.style.cssText = `width:${d}px;height:${d}px;left:${e.clientX - r.left - d / 2}px;top:${e.clientY - r.top - d / 2}px`;
+  el.appendChild(s);
+  s.addEventListener('animationend', () => s.remove());
+});
 
 // ---------- Images ----------
 function loadImage(file) {
@@ -154,7 +193,7 @@ function loadImage(file) {
     const url = URL.createObjectURL(file);
     const img = new Image();
     img.onload = () => { URL.revokeObjectURL(url); resolve(img); };
-    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Could not read that image.')); };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("Couldn't open that image. Try a JPG or PNG photo.")); };
     img.src = url;
   });
 }
@@ -168,6 +207,11 @@ function resizeImage(img, max, quality) {
 }
 
 // ---------- AI ----------
+class AppError extends Error {
+  constructor(message, action) { super(message); this.action = action; }
+}
+const openSettingsAction = { label: 'Settings', fn: () => showView('settings') };
+
 function buildPrompt({ hasImage, text }) {
   const units = 'calories in kcal; protein, carbs, fat, fiber, sugar, sat_fat in grams; cholesterol, sodium, potassium, calcium, iron, magnesium, zinc, vitamin_c in mg; vitamin_a, vitamin_d, vitamin_b12, folate in mcg';
   const keys = NKEYS.map((k) => `"${k}": number`).join(', ');
@@ -185,13 +229,32 @@ function buildPrompt({ hasImage, text }) {
   ].filter(Boolean).join('\n');
 }
 
+async function safeFetch(url, init) {
+  try {
+    return await fetch(url, init);
+  } catch {
+    throw new AppError("Can't reach the AI service. Check your internet connection and try again.");
+  }
+}
+
+function apiError(provider, status, message) {
+  const m = String(message || '');
+  if (status === 401 || status === 403 || /api key|API_KEY|invalid.*key|incorrect.*key/i.test(m)) {
+    return new AppError(`Your ${provider} API key isn't working. Check it in Settings.`, openSettingsAction);
+  }
+  if (status === 429) return new AppError(`${provider} limit reached for now. Wait a minute, then try again.`);
+  if (status === 404) return new AppError(`${provider} model not found. Check the model name in Settings.`, openSettingsAction);
+  if (status >= 500) return new AppError(`${provider} is busy right now. Try again in a moment.`);
+  return new AppError(`${provider}: ${m || `error ${status}`}`);
+}
+
 async function callGemini(prompt, imageDataUrl) {
   const key = settings.geminiKey.trim();
-  if (!key) throw new Error('Add your Gemini API key in Settings first.');
+  if (!key) throw new AppError('Add your free Gemini API key in Settings to analyse food.', openSettingsAction);
   const parts = [{ text: prompt }];
   if (imageDataUrl) parts.push({ inline_data: { mime_type: 'image/jpeg', data: imageDataUrl.split(',')[1] } });
   const model = encodeURIComponent(settings.geminiModel.trim() || DEFAULT_SETTINGS.geminiModel);
-  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+  const res = await safeFetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
     body: JSON.stringify({
@@ -200,16 +263,16 @@ async function callGemini(prompt, imageDataUrl) {
     }),
   });
   const j = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(`Gemini: ${j.error?.message || res.status}`);
+  if (!res.ok) throw apiError('Gemini', res.status, j.error?.message);
   return (j.candidates?.[0]?.content?.parts || []).map((p) => p.text || '').join('');
 }
 
 async function callOpenAI(prompt, imageDataUrl) {
   const key = settings.openaiKey.trim();
-  if (!key) throw new Error('Add your OpenAI API key in Settings first.');
+  if (!key) throw new AppError('Add your OpenAI API key in Settings, or switch to Gemini.', openSettingsAction);
   const content = [{ type: 'text', text: prompt }];
   if (imageDataUrl) content.push({ type: 'image_url', image_url: { url: imageDataUrl, detail: 'high' } });
-  const res = await fetch('https://api.openai.com/v1/chat/completions', {
+  const res = await safeFetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
     body: JSON.stringify({
@@ -219,16 +282,16 @@ async function callOpenAI(prompt, imageDataUrl) {
     }),
   });
   const j = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(`OpenAI: ${j.error?.message || res.status}`);
+  if (!res.ok) throw apiError('OpenAI', res.status, j.error?.message);
   return j.choices?.[0]?.message?.content || '';
 }
 
 function parseAI(txt) {
   const s = String(txt).trim();
   const a = s.indexOf('{'), b = s.lastIndexOf('}');
-  if (a < 0 || b <= a) throw new Error('The AI gave an unexpected answer. Please try again.');
+  if (a < 0 || b <= a) throw new AppError('The AI gave an unexpected answer. Tap Re-analyse to try again.');
   let j;
-  try { j = JSON.parse(s.slice(a, b + 1)); } catch { throw new Error('Could not read the AI answer. Please try again.'); }
+  try { j = JSON.parse(s.slice(a, b + 1)); } catch { throw new AppError("Couldn't read the AI's answer. Tap Re-analyse to try again."); }
   const items = (Array.isArray(j.items) ? j.items : []).map((raw) => {
     const grams = Math.max(1, Number(raw.grams) || 100);
     const n = raw.nutrients || {};
@@ -253,17 +316,29 @@ async function analyse({ imageDataUrl = null, text = '' }) {
   return parseAI(raw);
 }
 
+function showError(err) {
+  snackbar(err.message || 'Something went wrong. Please try again.', { error: true, action: err.action });
+}
+
 // ---------- Navigation ----------
 let currentDate = today();
 let historyRange = 7;
 const TITLES = { today: 'Food Tracker', review: 'Review meal', history: 'History', settings: 'Settings' };
 
-function showView(name) {
+function showView(name, { focus = true } = {}) {
   $$('.view').forEach((v) => v.classList.toggle('active', v.id === `view-${name}`));
-  $$('.tabbar button').forEach((b) => b.classList.toggle('active', b.dataset.tab === name));
+  $$('.tab').forEach((b) => {
+    if (b.dataset.tab === name) b.setAttribute('aria-current', 'page');
+    else b.removeAttribute('aria-current');
+  });
   document.body.classList.toggle('reviewing', name === 'review');
-  $('#title').textContent = TITLES[name] || 'Food Tracker';
+  document.body.classList.toggle('on-today', name === 'today');
+  $('#backBtn').hidden = name !== 'review';
+  $('#title').textContent = name === 'review' && review?.isEdit ? 'Edit meal' : TITLES[name];
+  document.title = name === 'today' ? 'Food Tracker' : `${$('#title').textContent} · Food Tracker`;
+  hideSnackbar();
   window.scrollTo(0, 0);
+  if (focus) $('#title').focus({ preventScroll: true }); // announce screen change to screen readers
   if (name === 'today') renderToday();
   if (name === 'history') renderHistory();
   if (name === 'settings') renderSettings();
@@ -274,12 +349,18 @@ function barHTML(key, value) {
   const n = NMAP[key];
   const goal = Number(settings.goals[key]) || 0;
   const pct = goal ? Math.min(100, (value / goal) * 100) : 0;
-  const warn = goal && value > goal && n.limit;
-  const color = { protein: 'var(--protein)', carbs: 'var(--carbs)', fat: 'var(--fat)', fiber: 'var(--fiber)', sugar: 'var(--sugar)' }[key];
-  const style = `width:${pct}%;${color && !warn ? `background:${color}` : ''}`;
+  const over = goal && value > goal;
+  const color = over && n.limit ? 'var(--warn)' : MACRO_COLORS[key] || 'var(--primary)';
+  const unitWord = UNIT_WORDS[n.unit] || n.unit;
+  const badge = n.limit
+    ? (over ? `<span class="badge over">${icon('warn')}Over limit</span>` : '<span class="badge limit">· limit</span>')
+    : '';
   return `<div class="bar-row">
-    <div class="bar-top"><span>${n.label}${n.limit ? ' <small class="muted">(limit)</small>' : ''}</span><span>${num(value)} / ${num(goal)} ${n.unit}</span></div>
-    <div class="bar"><i class="${warn ? 'warn' : ''}" style="${style}"></i></div>
+    <div class="bar-top"><span>${n.label}${badge}</span><span class="val">${num(value)} / ${num(goal)} ${n.unit}</span></div>
+    <div class="bar" role="progressbar" aria-label="${n.label}" aria-valuemin="0" aria-valuemax="${goal}" aria-valuenow="${Math.round(value * 10) / 10}"
+      aria-valuetext="${num(value)} of ${num(goal)} ${unitWord}${n.limit ? (over ? ', over the limit' : ', limit') : ''}">
+      <i style="width:${pct}%;background:${color}"></i>
+    </div>
   </div>`;
 }
 
@@ -300,56 +381,58 @@ async function renderToday() {
   ring.style.strokeDasharray = C;
   ring.style.strokeDashoffset = C * (1 - Math.min(pct, 1));
   ring.classList.toggle('over', pct > 1);
-  $('#calEaten').textContent = Math.round(t.calories);
-  $('#calGoalTxt').textContent = `of ${goal} kcal`;
+  const eaten = Math.round(t.calories);
   const left = Math.round(goal - t.calories);
+  $('#calEaten').textContent = eaten;
+  $('#calGoalTxt').textContent = `of ${goal} kcal`;
   $('#calLeft').textContent = left >= 0 ? `${left} left` : `${-left} over`;
+  $('#calLeft').classList.toggle('over', left < 0);
+  $('#ringWrap').setAttribute('aria-label', `${eaten} of ${goal} calories eaten, ${left >= 0 ? `${left} left` : `${-left} over goal`}`);
 
   $('#macroBars').innerHTML = MAIN_KEYS.map((k) => barHTML(k, t[k])).join('');
   $('#microTable').innerHTML = MICRO_KEYS.map((k) => barHTML(k, t[k])).join('');
 
-  // Meals
   if (!entries.length) {
-    $('#mealList').innerHTML = `<div class="card empty">No food logged ${currentDate === today() ? 'yet today' : 'on this day'}.<br>Tap <b>Snap food</b> to add your first meal.</div>`;
+    $('#mealList').innerHTML = `<div class="card empty">
+      ${icon('plate')}
+      <p><b>No food logged ${currentDate === today() ? 'yet today' : 'on this day'}</b></p>
+      <p>Tap <b>Snap food</b> to photograph your meal.</p>
+    </div>`;
     return;
   }
   $('#mealList').innerHTML = MEALS.map((meal) => {
     const list = entries.filter((e) => e.meal === meal);
     if (!list.length) return '';
     const mt = dayTotals(list);
-    return `<div class="card">
-      <div class="meal-head"><h3>${MEAL_ICONS[meal]} ${meal}</h3><span>${Math.round(mt.calories)} kcal</span></div>
+    return `<section class="card" aria-label="${meal}">
+      <div class="meal-head"><h2>${meal}</h2><span>${Math.round(mt.calories)} kcal</span></div>
       ${list.map((e) => {
         const et = sumItems(e.items);
         const names = e.items.map((i) => i.name).join(', ') || 'Meal';
-        return `<div class="entry" data-id="${esc(e.id)}">
-          ${e.thumb ? `<img src="${e.thumb}" alt="">` : '<div class="noimg">🍽️</div>'}
-          <div class="entry-body">
-            <div class="entry-name">${esc(names)}</div>
-            <div class="entry-sub">${esc(e.time)} · P ${num(et.protein)}g · C ${num(et.carbs)}g · F ${num(et.fat)}g</div>
-          </div>
-          <div class="entry-kcal">${Math.round(et.calories)}</div>
-        </div>`;
+        return `<button class="entry" data-id="${esc(e.id)}" aria-label="${esc(names)}, ${Math.round(et.calories)} calories at ${esc(e.time)}. Tap to edit.">
+          ${e.thumb ? `<img class="thumb" src="${e.thumb}" alt="">` : `<span class="thumb">${icon('plate')}</span>`}
+          <span class="entry-body">
+            <span class="entry-name">${esc(names)}</span>
+            <span class="entry-sub">${esc(e.time)} · ${macroText(et)}</span>
+          </span>
+          <span class="entry-kcal">${Math.round(et.calories)} <small>kcal</small></span>
+        </button>`;
       }).join('')}
-    </div>`;
+    </section>`;
   }).join('');
 }
 
 // ---------- Review / edit ----------
-let review = null; // { id, photo, thumb, items, meal, date, time, notes, isEdit }
+let review = null; // { id, photo, thumb, items, meal, date, time, notes, isEdit, analysing, adding }
 
 function newReview(extra = {}) {
   const now = new Date();
   return {
-    id: null,
-    photo: null,
-    thumb: null,
-    items: [],
-    notes: '',
+    id: null, photo: null, thumb: null, items: [], notes: '', hint: '',
     date: currentDate,
     time: `${pad(now.getHours())}:${pad(now.getMinutes())}`,
     meal: mealForHour(now.getHours()),
-    isEdit: false,
+    isEdit: false, analysing: false, adding: false,
     ...extra,
   };
 }
@@ -368,81 +451,119 @@ window.addEventListener('popstate', () => {
   if ($('#view-review').classList.contains('active')) { review = null; showView('today'); }
 });
 
+const skeletonItem = () => `<div class="card item" aria-hidden="true">
+  <div class="skel skel-line w60"></div>
+  <div class="item-row"><div class="skel skel-pill"></div><div class="skel skel-line w40" style="margin:0;width:64px;height:28px"></div></div>
+  <div class="skel skel-line w80" style="margin:12px 0 0"></div>
+</div>`;
+
+function itemHTML(it) {
+  const n = itemNutrients(it);
+  const name = esc(it.name);
+  return `<div class="card item" data-id="${it.id}">
+    <div class="item-head">
+      <input class="item-name" value="${name}" aria-label="Food name" autocomplete="off">
+      <button class="icon-btn remove" aria-label="Remove ${name}">${icon('close')}</button>
+    </div>
+    <div class="item-row">
+      <div class="stepper" role="group" aria-label="Weight of ${name}">
+        <button class="icon-btn minus" aria-label="Decrease ${name} weight">${icon('minus')}</button>
+        <input class="item-grams" type="number" inputmode="decimal" min="0" value="${it.grams}" aria-label="Grams of ${name}">
+        <span class="unit" aria-hidden="true">g</span>
+        <button class="icon-btn plus" aria-label="Increase ${name} weight">${icon('plus')}</button>
+      </div>
+      <div class="item-kcal"><span class="kcal">${Math.round(n.calories)}</span><small>kcal</small></div>
+    </div>
+    <div class="item-foot">
+      <div class="macro-chips">${macroChips(n)}</div>
+      ${it.confidence ? `<span class="conf ${it.confidence}">${it.confidence[0].toUpperCase() + it.confidence.slice(1)} confidence</span>` : ''}
+    </div>
+  </div>`;
+}
+const macroChips = (n) => `<span style="--c:var(--protein)">Protein ${num(n.protein)}g</span><span style="--c:var(--carbs)">Carbs ${num(n.carbs)}g</span><span style="--c:var(--fat)">Fat ${num(n.fat)}g</span>`;
+
 function renderReview() {
   const r = review;
+  if (!r) return;
+  $('#title').textContent = r.isEdit ? 'Edit meal' : 'Review meal';
   const img = $('#reviewPhoto');
   img.hidden = !(r.photo || r.thumb);
   if (!img.hidden) img.src = r.photo || r.thumb;
   $('#hintBox').hidden = !r.photo;
   $('#reviewHint').value = r.hint || '';
-  $('#reviewNotes').textContent = r.notes || '';
   $('#reviewMeal').value = r.meal;
   $('#reviewDate').value = r.date;
   $('#reviewDate').max = today();
   $('#reviewTime').value = r.time;
   $('#deleteEntry').hidden = !r.isEdit;
-  $('#saveReview').textContent = r.isEdit ? 'Save changes' : 'Save meal';
+  $('#saveReview span').textContent = r.isEdit ? 'Save changes' : 'Save meal';
 
-  $('#reviewItems').innerHTML = r.items.length
-    ? r.items.map((it) => `<div class="card item" data-id="${it.id}">
-        <div class="item-head">
-          <input class="item-name" value="${esc(it.name)}" aria-label="Food name">
-          <button class="icon-btn remove" aria-label="Remove item">✕</button>
-        </div>
-        <div class="grams">
-          <button class="icon-btn minus" aria-label="Less">−</button>
-          <input class="item-grams" type="number" inputmode="decimal" min="1" value="${it.grams}" aria-label="Grams">
-          <span>g</span>
-          <button class="icon-btn plus" aria-label="More">+</button>
-          ${it.confidence ? `<span class="tag ${it.confidence}">${it.confidence} confidence</span>` : ''}
-        </div>
-        <div class="item-macros">${macroLine(itemNutrients(it))}</div>
-      </div>`).join('')
-    : `<div class="card empty">${r.photo ? 'No food items yet. Try re-analysing, or add items by typing below.' : 'Type what you ate below, e.g. “2 chapati with dal and a bowl of curd”.'}</div>`;
+  const status = $('#reviewStatus');
+  status.classList.toggle('busy', r.analysing);
+  status.textContent = r.analysing ? 'Analysing your photo… usually takes 3–10 seconds' : (r.notes ? `AI note: ${r.notes}` : '');
+
+  const busy = r.analysing || r.adding;
+  $('#reanalyse').disabled = busy;
+  $('#addItemBtn').disabled = busy;
+  setBusy($('#addItemBtn'), r.adding);
+  $('#saveReview').disabled = busy || !r.items.length;
+
+  let html;
+  if (r.analysing) html = skeletonItem() + skeletonItem();
+  else if (!r.items.length) {
+    html = `<div class="card empty">${icon(r.photo ? 'plate' : 'edit')}<p>${r.photo
+      ? 'No food items found. Add extra details and tap <b>Re-analyse</b>, or type the food below.'
+      : 'Type what you ate below, for example “2 chapati with dal and a bowl of curd”.'}</p></div>`;
+  } else html = r.items.map(itemHTML).join('');
+  if (r.adding) html += skeletonItem();
+  $('#reviewItems').innerHTML = html;
   updateReviewTotal();
 }
 
 function updateReviewTotal() {
   const t = sumItems(review.items);
-  $('#reviewTotal').textContent = macroLine(t);
+  $('#reviewTotal').textContent = `${Math.round(t.calories)} kcal`;
+  $('#reviewTotal').setAttribute('aria-label', `Meal total ${Math.round(t.calories)} calories, ${macroText(t)}`);
 }
 
 function setItemGrams(card, grams) {
   const it = review.items.find((i) => i.id === card.dataset.id);
   if (!it) return;
   it.grams = Math.max(0, Math.round(grams));
-  $('.item-macros', card).textContent = macroLine(itemNutrients(it));
+  const n = itemNutrients(it);
+  $('.kcal', card).textContent = Math.round(n.calories);
+  $('.macro-chips', card).innerHTML = macroChips(n);
   updateReviewTotal();
+  $('#saveReview').disabled = !review.items.some((i) => i.grams > 0);
 }
 
 async function runPhotoAnalysis() {
   if (!review?.photo) return;
-  loading(true);
+  review.analysing = true;
+  renderReview();
   try {
     const res = await analyse({ imageDataUrl: review.photo, text: review.hint || '' });
+    if (!review) return;
     review.items = res.items;
     review.notes = res.notes;
-    if (!res.items.length) toast('No food detected. Add details or type it.', true);
+    if (res.items.length) haptic(15);
+    else snackbar('No food found. Add details and re-analyse, or type it.', { error: true });
   } catch (err) {
-    toast(err.message, true);
+    showError(err);
   } finally {
-    loading(false);
-    if (review) renderReview();
+    if (review) { review.analysing = false; renderReview(); }
   }
 }
 
 async function handleImageFile(file) {
   if (!file) return;
-  loading(true, 'Preparing photo…');
   try {
     const img = await loadImage(file);
     review = newReview({ photo: resizeImage(img, 1024, 0.85), thumb: resizeImage(img, 320, 0.7) });
   } catch (err) {
-    loading(false);
-    toast(err.message, true);
+    showError(err);
     return;
   }
-  loading(false);
   openReview();
   await runPhotoAnalysis();
 }
@@ -450,25 +571,27 @@ async function handleImageFile(file) {
 async function addTypedItem() {
   const input = $('#addItemText');
   const text = input.value.trim();
-  if (!text) { input.focus(); return; }
-  loading(true, 'Estimating nutrition…');
+  if (!text) { input.focus(); snackbar('Type a food first, e.g. “1 cup rice”.'); return; }
+  review.adding = true;
+  renderReview();
   try {
     const res = await analyse({ text });
-    if (!res.items.length) throw new Error('Could not recognise that food. Try describing it differently.');
+    if (!review) return;
+    if (!res.items.length) throw new AppError("Couldn't recognise that food. Try describing it differently.");
     review.items.push(...res.items);
     input.value = '';
+    haptic(15);
   } catch (err) {
-    toast(err.message, true);
+    showError(err);
   } finally {
-    loading(false);
-    if (review) renderReview();
+    if (review) { review.adding = false; renderReview(); }
   }
 }
 
 async function saveReview() {
   const r = review;
   r.items = r.items.filter((i) => i.grams > 0);
-  if (!r.items.length) { toast('Add at least one food item.', true); return; }
+  if (!r.items.length) { snackbar('Add at least one food before saving.', { error: true }); return; }
   const entry = {
     id: r.id || uid(),
     date: $('#reviewDate').value || today(),
@@ -481,26 +604,35 @@ async function saveReview() {
     updatedAt: Date.now(),
   };
   await DB.put(entry);
+  haptic(20);
   currentDate = entry.date;
-  toast(r.isEdit ? 'Meal updated' : `Saved · ${Math.round(sumItems(entry.items).calories)} kcal`);
+  const kcal = Math.round(sumItems(entry.items).calories);
   closeReview();
+  setTimeout(() => snackbar(r.isEdit ? 'Meal updated' : `Meal saved · ${kcal} kcal`), 50);
 }
 
 async function editEntry(id) {
   const e = await DB.get(id);
   if (!e) return;
-  review = newReview({
-    ...e,
-    items: JSON.parse(JSON.stringify(e.items)),
-    photo: null,
-    isEdit: true,
-  });
+  review = newReview({ ...e, items: JSON.parse(JSON.stringify(e.items)), photo: null, isEdit: true });
   openReview();
+}
+
+async function deleteEntry() {
+  if (!review?.id) return;
+  const saved = await DB.get(review.id);
+  await DB.del(review.id);
+  haptic(20);
+  closeReview();
+  // Undo instead of a blocking confirm dialog
+  setTimeout(() => snackbar('Meal deleted', {
+    action: { label: 'Undo', fn: async () => { if (saved) { await DB.put(saved); renderToday(); snackbar('Meal restored'); } } },
+  }), 50);
 }
 
 // ---------- History ----------
 async function renderHistory() {
-  $$('#view-history .seg button').forEach((b) => b.classList.toggle('active', Number(b.dataset.range) === historyRange));
+  $$('#view-history .seg button').forEach((b) => b.setAttribute('aria-checked', String(Number(b.dataset.range) === historyRange)));
   const end = today();
   const start = addDays(end, -(historyRange - 1));
   const entries = await DB.range(start, end);
@@ -511,55 +643,59 @@ async function renderHistory() {
   for (let d = start; d <= end; d = addDays(d, 1)) days.push(d);
   const totals = days.map((d) => (byDay[d] ? dayTotals(byDay[d]) : null));
   const goal = Number(settings.goals.calories) || 0;
+  const logged = totals.filter(Boolean);
+  const avg = (k) => (logged.length ? logged.reduce((s, t) => s + t[k], 0) / logged.length : 0);
 
   // Bar chart (SVG)
-  const W = 320, H = 150, padL = 4, padB = 18, padT = 8;
+  const W = 320, H = 160, padB = 20, padT = 8;
   const max = Math.max(goal, ...totals.map((t) => (t ? t.calories : 0)), 1) * 1.1;
-  const bw = (W - padL) / days.length;
+  const bw = W / days.length;
   const y = (v) => H - padB - ((H - padB - padT) * v) / max;
   const bars = days.map((d, i) => {
     const v = totals[i] ? totals[i].calories : 0;
-    const x = padL + i * bw + bw * 0.15;
-    const h = H - padB - y(v);
-    return `<rect class="b ${goal && v > goal ? 'over' : ''}" x="${x.toFixed(1)}" y="${y(v).toFixed(1)}" width="${(bw * 0.7).toFixed(1)}" height="${Math.max(0, h).toFixed(1)}" rx="2"><title>${prettyDate(d)}: ${Math.round(v)} kcal</title></rect>`;
+    const x = i * bw + bw * 0.15;
+    const h = Math.max(0, H - padB - y(v));
+    return `<rect class="b ${goal && v > goal ? 'over' : ''}" x="${x.toFixed(1)}" y="${y(v).toFixed(1)}" width="${(bw * 0.7).toFixed(1)}" height="${h.toFixed(1)}" rx="${Math.min(4, bw * 0.2).toFixed(1)}"><title>${prettyDate(d)}: ${Math.round(v)} kcal</title></rect>`;
   }).join('');
   const labelEvery = historyRange <= 7 ? 1 : historyRange <= 30 ? 7 : 15;
   const labels = days.map((d, i) => {
     if ((days.length - 1 - i) % labelEvery !== 0) return '';
     const dt = parseYmd(d);
-    const txt = historyRange <= 7 ? dt.toLocaleDateString(undefined, { weekday: 'narrow' }) : `${dt.getDate()}/${dt.getMonth() + 1}`;
-    return `<text x="${(padL + i * bw + bw / 2).toFixed(1)}" y="${H - 4}" text-anchor="middle">${txt}</text>`;
+    const txt = historyRange <= 7 ? dt.toLocaleDateString(undefined, { weekday: 'short' }).slice(0, 3) : `${dt.getDate()}/${dt.getMonth() + 1}`;
+    return `<text x="${(i * bw + bw / 2).toFixed(1)}" y="${H - 5}" text-anchor="middle">${txt}</text>`;
   }).join('');
   const goalLine = goal ? `<line class="goal" x1="0" x2="${W}" y1="${y(goal).toFixed(1)}" y2="${y(goal).toFixed(1)}"></line>` : '';
-  $('#chart').innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Calories per day">${bars}${goalLine}${labels}</svg>`;
+  const overDays = totals.filter((t) => t && goal && t.calories > goal).length;
+  const summary = logged.length
+    ? `Last ${historyRange} days: ${logged.length} days logged, average ${Math.round(avg('calories'))} calories, ${overDays} days over your ${goal} calorie goal.`
+    : `No meals logged in the last ${historyRange} days.`;
+  $('#chart').innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${summary}">${bars}${goalLine}${labels}</svg>`;
 
-  // Averages over logged days
-  const logged = totals.filter(Boolean);
-  const avg = (k) => (logged.length ? logged.reduce((s, t) => s + t[k], 0) / logged.length : 0);
   $('#avgStats').innerHTML = [
     ['Avg kcal', Math.round(avg('calories'))],
     ['Protein', `${num(avg('protein'))}g`],
     ['Carbs', `${num(avg('carbs'))}g`],
     ['Fat', `${num(avg('fat'))}g`],
   ].map(([l, v]) => `<div><b>${v}</b><span>${l}</span></div>`).join('') +
-    `<p class="muted small" style="grid-column:1/-1;margin:4px 0 0">${logged.length} of ${days.length} days logged · dashed line = goal</p>`;
+    `<p>Daily averages over ${logged.length} of ${days.length} days logged</p>`;
 
-  // Day list
   const loggedDays = days.filter((d) => byDay[d]).reverse();
   $('#dayList').innerHTML = loggedDays.length
     ? loggedDays.map((d) => {
         const t = dayTotals(byDay[d]);
-        return `<div class="card day" data-date="${d}">
-          <div><b>${prettyDate(d)}</b><small>${byDay[d].length} meal${byDay[d].length > 1 ? 's' : ''} · P ${num(t.protein)}g · C ${num(t.carbs)}g · F ${num(t.fat)}g</small></div>
-          <b>${Math.round(t.calories)} kcal</b>
-        </div>`;
+        const meals = byDay[d].length;
+        return `<button class="card day" data-date="${d}" aria-label="${prettyDate(d)}: ${Math.round(t.calories)} calories, ${meals} meals. Open day.">
+          <span><b>${prettyDate(d)}</b><small>${meals} meal${meals > 1 ? 's' : ''} · ${macroText(t)}</small></span>
+          <span class="entry-kcal">${Math.round(t.calories)} <small>kcal</small></span>
+          ${icon('right')}
+        </button>`;
       }).join('')
-    : '<div class="card empty">No meals logged in this period yet.</div>';
+    : `<div class="card empty">${icon('chart')}<p>No meals logged in this period yet.</p></div>`;
 }
 
 // ---------- Settings ----------
 function renderSettings() {
-  $$('#providerSeg button').forEach((b) => b.classList.toggle('active', b.dataset.provider === settings.provider));
+  $$('#providerSeg button').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.provider === settings.provider)));
   $('#geminiBox').hidden = settings.provider !== 'gemini';
   $('#openaiBox').hidden = settings.provider !== 'openai';
   $('#geminiKey').value = settings.geminiKey;
@@ -568,9 +704,10 @@ function renderSettings() {
   $('#openaiModel').value = settings.openaiModel;
   $('#cuisine').value = settings.cuisine;
 
-  $('#goalInputs').innerHTML = GOAL_INPUT_KEYS.map((k) => `<label class="field">${NMAP[k].label} (${NMAP[k].unit})
-      <input type="number" inputmode="decimal" min="0" data-goal="${k}" value="${settings.goals[k]}">
-    </label>`).join('');
+  $('#goalInputs').innerHTML = GOAL_INPUT_KEYS.map((k) => `<div>
+      <label class="field" for="goal-${k}">${NMAP[k].label} (${NMAP[k].unit})</label>
+      <input id="goal-${k}" class="input" type="number" inputmode="decimal" min="0" data-goal="${k}" value="${settings.goals[k]}">
+    </div>`).join('');
 
   const p = settings.profile;
   $('#pSex').value = p.sex;
@@ -612,6 +749,7 @@ async function exportJson() {
   download(`food-tracker-backup-${today()}.json`,
     JSON.stringify({ app: 'food_tracker', version: 1, exportedAt: new Date().toISOString(), settings: safeSettings, entries }),
     'application/json');
+  snackbar(`Backup saved (${entries.length} meals)`);
 }
 
 async function exportCsv() {
@@ -625,29 +763,31 @@ async function exportCsv() {
     }
   }
   download(`food-tracker-${today()}.csv`, rows.join('\n'), 'text/csv');
+  snackbar('CSV exported');
 }
 
 async function importJson(file) {
   try {
     const data = JSON.parse(await file.text());
-    if (data.app !== 'food_tracker' || !Array.isArray(data.entries)) throw new Error('This is not a Food Tracker backup file.');
+    if (data.app !== 'food_tracker' || !Array.isArray(data.entries)) throw new AppError("That isn't a Food Tracker backup file. Choose the .json file from Back up.");
     for (const e of data.entries) if (e && e.id && e.date && Array.isArray(e.items)) await DB.put(e);
     if (data.settings) {
       settings = { ...settings, ...data.settings, geminiKey: settings.geminiKey, openaiKey: settings.openaiKey,
         goals: { ...settings.goals, ...(data.settings.goals || {}) }, profile: { ...settings.profile, ...(data.settings.profile || {}) } };
       saveSettings();
     }
-    toast(`Restored ${data.entries.length} meals`);
+    snackbar(`Restored ${data.entries.length} meals`);
     renderSettings();
   } catch (err) {
-    toast(err.message || 'Could not restore backup', true);
+    showError(err instanceof SyntaxError ? new AppError("Couldn't read that file. Choose the .json file from Back up.") : err);
   }
 }
 
 // ---------- Events ----------
 function bindEvents() {
-  // Tabs
-  $$('.tabbar button').forEach((b) => b.addEventListener('click', () => showView(b.dataset.tab)));
+  // Navigation
+  $$('.tab').forEach((b) => b.addEventListener('click', () => showView(b.dataset.tab)));
+  $('#backBtn').addEventListener('click', closeReview);
 
   // Date navigation
   $('#prevDay').addEventListener('click', () => { currentDate = addDays(currentDate, -1); renderToday(); });
@@ -659,7 +799,7 @@ function bindEvents() {
     const a = b.dataset.action;
     if (a === 'camera') $('#cameraInput').click();
     if (a === 'gallery') $('#galleryInput').click();
-    if (a === 'describe') { review = newReview(); openReview(); setTimeout(() => $('#addItemText').focus(), 50); }
+    if (a === 'describe') { review = newReview(); openReview(); setTimeout(() => $('#addItemText').focus(), 60); }
   }));
   for (const id of ['#cameraInput', '#galleryInput']) {
     $(id).addEventListener('change', (e) => { const f = e.target.files[0]; e.target.value = ''; handleImageFile(f); });
@@ -684,12 +824,14 @@ function bindEvents() {
   });
   items.addEventListener('click', (e) => {
     const card = e.target.closest('.item');
-    if (!card || !review) return;
     const btn = e.target.closest('button');
-    if (!btn) return;
+    if (!card || !btn || !review) return;
     if (btn.classList.contains('remove')) {
-      review.items = review.items.filter((i) => i.id !== card.dataset.id);
+      const idx = review.items.findIndex((i) => i.id === card.dataset.id);
+      const [removed] = review.items.splice(idx, 1);
+      haptic(10);
       renderReview();
+      snackbar(`Removed ${removed.name}`, { action: { label: 'Undo', fn: () => { if (review) { review.items.splice(idx, 0, removed); renderReview(); } } } });
       return;
     }
     const input = $('.item-grams', card);
@@ -697,24 +839,20 @@ function bindEvents() {
     const step = cur >= 200 ? 25 : 10;
     const next = btn.classList.contains('plus') ? cur + step : Math.max(0, cur - step);
     input.value = next;
+    haptic(5);
     setItemGrams(card, next);
   });
 
   $('#reviewHint').addEventListener('input', (e) => { if (review) review.hint = e.target.value; });
+  $('#reviewHint').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); runPhotoAnalysis(); } });
   $('#reanalyse').addEventListener('click', runPhotoAnalysis);
   $('#addItemBtn').addEventListener('click', addTypedItem);
   $('#addItemText').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); addTypedItem(); } });
   $('#reviewMeal').addEventListener('change', (e) => { if (review) review.meal = e.target.value; });
   $('#reviewDate').addEventListener('change', (e) => { if (review) review.date = e.target.value; });
   $('#reviewTime').addEventListener('change', (e) => { if (review) review.time = e.target.value; });
-  $('#cancelReview').addEventListener('click', closeReview);
-  $('#saveReview').addEventListener('click', () => saveReview().catch((err) => toast(err.message, true)));
-  $('#deleteEntry').addEventListener('click', async () => {
-    if (!review?.id || !confirm('Delete this meal?')) return;
-    await DB.del(review.id);
-    toast('Meal deleted');
-    closeReview();
-  });
+  $('#saveReview').addEventListener('click', () => saveReview().catch(showError));
+  $('#deleteEntry').addEventListener('click', () => deleteEntry().catch(showError));
 
   // History
   $$('#view-history .seg button').forEach((b) => b.addEventListener('click', () => { historyRange = Number(b.dataset.range); renderHistory(); }));
@@ -725,18 +863,27 @@ function bindEvents() {
 
   // Settings
   $$('#providerSeg button').forEach((b) => b.addEventListener('click', () => { settings.provider = b.dataset.provider; saveSettings(); renderSettings(); }));
-  const textSetting = (id, key) => $(id).addEventListener('change', (e) => { settings[key] = e.target.value.trim(); saveSettings(); toast('Saved'); });
-  textSetting('#geminiKey', 'geminiKey');
-  textSetting('#geminiModel', 'geminiModel');
-  textSetting('#openaiKey', 'openaiKey');
-  textSetting('#openaiModel', 'openaiModel');
-  textSetting('#cuisine', 'cuisine');
+  $$('[data-reveal]').forEach((b) => b.addEventListener('click', () => {
+    const input = $(`#${b.dataset.reveal}`);
+    const show = input.type === 'password';
+    input.type = show ? 'text' : 'password';
+    b.setAttribute('aria-pressed', String(show));
+    b.setAttribute('aria-label', `${show ? 'Hide' : 'Show'} ${b.dataset.reveal === 'geminiKey' ? 'Gemini' : 'OpenAI'} key`);
+  }));
+  const textSetting = (id, key, label) => $(id).addEventListener('change', (e) => { settings[key] = e.target.value.trim(); saveSettings(); snackbar(`${label} saved`); });
+  textSetting('#geminiKey', 'geminiKey', 'Gemini key');
+  textSetting('#geminiModel', 'geminiModel', 'Model');
+  textSetting('#openaiKey', 'openaiKey', 'OpenAI key');
+  textSetting('#openaiModel', 'openaiModel', 'Model');
+  textSetting('#cuisine', 'cuisine', 'Cuisine');
   $('#goalInputs').addEventListener('change', (e) => {
     const k = e.target.dataset.goal;
     if (!k) return;
-    settings.goals[k] = Math.max(0, Number(e.target.value) || 0);
+    const v = Number(e.target.value);
+    if (!isFinite(v) || v < 0) { e.target.value = settings.goals[k]; snackbar('Enter a number of 0 or more.', { error: true }); return; }
+    settings.goals[k] = v;
     saveSettings();
-    toast('Goal saved');
+    snackbar(`${NMAP[k].label} goal saved`);
   });
   $('#calcGoals').addEventListener('click', () => {
     const p = {
@@ -751,32 +898,34 @@ function bindEvents() {
     settings.goals = { ...settings.goals, ...calcGoals(p) };
     saveSettings();
     renderSettings();
-    toast(`Goal set to ${settings.goals.calories} kcal/day`);
+    haptic(15);
+    snackbar(`Goals updated: ${settings.goals.calories} kcal, ${settings.goals.protein} g protein per day`);
   });
-  $('#testAI').addEventListener('click', async () => {
-    loading(true, 'Testing connection…');
+  $('#testAI').addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    setBusy(btn, true, 'Testing…');
     try {
       const res = await analyse({ text: '1 medium banana' });
       const it = res.items[0];
-      toast(it ? `Works! ${it.name}: ${Math.round(itemNutrients(it).calories)} kcal` : 'Connected, but got no items back.');
+      snackbar(it ? `Connected! ${it.name}: ${Math.round(itemNutrients(it).calories)} kcal` : 'Connected, but no food came back. Try again.');
+      if (it) haptic(15);
     } catch (err) {
-      toast(err.message, true);
+      showError(err);
     } finally {
-      loading(false);
+      setBusy(btn, false);
     }
   });
-  $('#exportJson').addEventListener('click', exportJson);
-  $('#exportCsv').addEventListener('click', exportCsv);
+  $('#exportJson').addEventListener('click', () => exportJson().catch(showError));
+  $('#exportCsv').addEventListener('click', () => exportCsv().catch(showError));
   $('#importJson').addEventListener('click', () => $('#importInput').click());
   $('#importInput').addEventListener('change', (e) => { const f = e.target.files[0]; e.target.value = ''; if (f) importJson(f); });
   $('#clearAll').addEventListener('click', async () => {
-    if (!confirm('Delete ALL your logged meals? This cannot be undone.')) return;
-    if (!confirm('Are you really sure? Export a backup first if unsure.')) return;
+    if (!confirm('Delete ALL logged meals from this phone? This cannot be undone. Back up first if unsure.')) return;
     await DB.clear();
-    toast('All meals deleted');
+    snackbar('All meals deleted');
   });
 
-  // Refresh when the app comes back to the foreground on a new day
+  // Refresh when the app comes back to the foreground (e.g. on a new day)
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible' && $('#view-today').classList.contains('active')) renderToday();
   });
@@ -787,13 +936,13 @@ async function init() {
   try {
     await DB.open();
   } catch {
-    toast('Storage is unavailable in this browser.', true);
+    snackbar("This browser can't store data. Open the app in Chrome.", { error: true });
     return;
   }
   bindEvents();
-  showView('today');
+  showView('today', { focus: false });
   if (!settings.geminiKey && !settings.openaiKey) {
-    setTimeout(() => toast('Welcome! Add your free Gemini key in Settings to start.'), 600);
+    setTimeout(() => snackbar('Add your free Gemini key to start analysing food.', { action: openSettingsAction }), 600);
   }
   if (navigator.storage?.persist) navigator.storage.persist().catch(() => {});
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
