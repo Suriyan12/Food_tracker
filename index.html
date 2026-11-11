@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#16a34a">
+  <meta name="description" content="Snap a photo of your food and track calories, macros and micronutrients every day.">
+  <title>Food Tracker</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" type="image/png" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <h1 id="title">Today</h1>
+  </header>
+
+  <main>
+    <!-- ============ TODAY ============ -->
+    <section id="view-today" class="view active">
+      <div class="datenav">
+        <button id="prevDay" class="icon-btn" aria-label="Previous day">&#8249;</button>
+        <label class="date-label">
+          <span id="dateLabel">Today</span>
+          <input type="date" id="datePicker" aria-label="Pick a date">
+        </label>
+        <button id="nextDay" class="icon-btn" aria-label="Next day">&#8250;</button>
+      </div>
+
+      <div class="card summary">
+        <div class="ring-wrap">
+          <svg viewBox="0 0 120 120" aria-hidden="true">
+            <circle class="ring-bg" cx="60" cy="60" r="52"></circle>
+            <circle id="ringFg" class="ring-fg" cx="60" cy="60" r="52"></circle>
+          </svg>
+          <div class="ring-text">
+            <b id="calEaten">0</b>
+            <span id="calGoalTxt">of 2000 kcal</span>
+            <small id="calLeft"></small>
+          </div>
+        </div>
+        <div id="macroBars" class="bars"></div>
+      </div>
+
+      <div class="quick-actions">
+        <button class="btn primary big" data-action="camera">&#128247; Snap food</button>
+        <button class="btn" data-action="gallery">&#128444;&#65039; Gallery</button>
+        <button class="btn" data-action="describe">&#9997;&#65039; Type it</button>
+      </div>
+
+      <div id="mealList"></div>
+
+      <details class="card" id="microCard">
+        <summary>Micronutrients &amp; limits</summary>
+        <div id="microTable" class="bars"></div>
+      </details>
+    </section>
+
+    <!-- ============ REVIEW / EDIT ============ -->
+    <section id="view-review" class="view">
+      <div class="card">
+        <img id="reviewPhoto" class="review-photo" alt="Your meal" hidden>
+        <div id="hintBox">
+          <label class="field">Extra details (optional, improves accuracy)
+            <input id="reviewHint" placeholder="e.g. 3 idlis, sambar, cooked with ghee">
+          </label>
+          <button id="reanalyse" class="btn small">&#128260; Re-analyse with details</button>
+        </div>
+        <p id="reviewNotes" class="muted"></p>
+      </div>
+
+      <div id="reviewItems"></div>
+
+      <div class="card">
+        <label class="field">Add a food by typing
+          <div class="row">
+            <input id="addItemText" placeholder="e.g. 1 cup tea with milk and 1 tsp sugar">
+            <button id="addItemBtn" class="btn">Add</button>
+          </div>
+        </label>
+      </div>
+
+      <div class="card grid3">
+        <label class="field">Meal
+          <select id="reviewMeal">
+            <option>Breakfast</option><option>Lunch</option><option>Snacks</option><option>Dinner</option>
+          </select>
+        </label>
+        <label class="field">Date <input type="date" id="reviewDate"></label>
+        <label class="field">Time <input type="time" id="reviewTime"></label>
+      </div>
+
+      <div class="card total-card">
+        <span>Meal total</span>
+        <b id="reviewTotal">0 kcal</b>
+      </div>
+
+      <div class="row actions">
+        <button id="cancelReview" class="btn">Cancel</button>
+        <button id="deleteEntry" class="btn danger" hidden>Delete</button>
+        <button id="saveReview" class="btn primary">Save meal</button>
+      </div>
+    </section>
+
+    <!-- ============ HISTORY ============ -->
+    <section id="view-history" class="view">
+      <div class="seg" role="tablist">
+        <button data-range="7" class="active">7 days</button>
+        <button data-range="30">30 days</button>
+        <button data-range="90">90 days</button>
+      </div>
+      <div class="card">
+        <h2 class="card-title">Calories per day</h2>
+        <div id="chart"></div>
+        <div id="avgStats" class="stats"></div>
+      </div>
+      <div id="dayList"></div>
+    </section>
+
+    <!-- ============ SETTINGS ============ -->
+    <section id="view-settings" class="view">
+      <div class="card">
+        <h2 class="card-title">AI provider</h2>
+        <div class="seg" id="providerSeg">
+          <button data-provider="gemini">Google Gemini</button>
+          <button data-provider="openai">OpenAI (GPT)</button>
+        </div>
+
+        <div id="geminiBox" class="provider-box">
+          <label class="field">Gemini API key
+            <input id="geminiKey" type="password" autocomplete="off" placeholder="Paste key from aistudio.google.com/apikey">
+          </label>
+          <label class="field">Gemini model
+            <input id="geminiModel" autocomplete="off">
+          </label>
+          <p class="muted small">Free key: <b>aistudio.google.com/apikey</b>. On the free tier Google may use your photos to improve its products.</p>
+        </div>
+
+        <div id="openaiBox" class="provider-box">
+          <label class="field">OpenAI API key
+            <input id="openaiKey" type="password" autocomplete="off" placeholder="sk-... (from platform.openai.com/api-keys)">
+          </label>
+          <label class="field">OpenAI model
+            <input id="openaiModel" autocomplete="off">
+          </label>
+          <p class="muted small">OpenAI is pay-as-you-go (no free tier). Each photo costs a fraction of a cent.</p>
+        </div>
+
+        <label class="field">Your usual cuisine (optional)
+          <input id="cuisine" placeholder="e.g. South Indian home cooking">
+        </label>
+        <button id="testAI" class="btn">Test connection</button>
+        <p class="muted small">Keys are saved only on this phone, never in the app's code or on GitHub.</p>
+      </div>
+
+      <div class="card">
+        <h2 class="card-title">Daily goals</h2>
+        <div id="goalInputs" class="grid2"></div>
+        <details class="calc">
+          <summary>Calculate goals for me</summary>
+          <div class="grid2">
+            <label class="field">Sex
+              <select id="pSex"><option value="male">Male</option><option value="female">Female</option></select>
+            </label>
+            <label class="field">Age <input id="pAge" type="number" inputmode="numeric" min="10" max="100"></label>
+            <label class="field">Height (cm) <input id="pHeight" type="number" inputmode="decimal" min="100" max="250"></label>
+            <label class="field">Weight (kg) <input id="pWeight" type="number" inputmode="decimal" min="25" max="300"></label>
+            <label class="field">Activity
+              <select id="pActivity">
+                <option value="1.2">Sitting most of the day</option>
+                <option value="1.375">Light (1-3 workouts/week)</option>
+                <option value="1.55">Moderate (3-5/week)</option>
+                <option value="1.725">Very active (6-7/week)</option>
+              </select>
+            </label>
+            <label class="field">Goal
+              <select id="pTarget">
+                <option value="lose">Lose weight</option>
+                <option value="maintain">Maintain</option>
+                <option value="gain">Gain muscle</option>
+              </select>
+            </label>
+          </div>
+          <button id="calcGoals" class="btn primary">Calculate &amp; apply</button>
+        </details>
+      </div>
+
+      <div class="card">
+        <h2 class="card-title">Your data</h2>
+        <p class="muted small">Everything is stored on this phone. Export a backup regularly.</p>
+        <div class="row wrap">
+          <button id="exportJson" class="btn">Backup (JSON)</button>
+          <button id="exportCsv" class="btn">Export CSV</button>
+          <button id="importJson" class="btn">Restore backup</button>
+          <button id="clearAll" class="btn danger">Delete all data</button>
+        </div>
+        <input type="file" id="importInput" accept="application/json,.json" hidden>
+      </div>
+      <p class="muted small center">Estimates from photos are approximate (often within 20-30%). Adjust grams for better accuracy.</p>
+    </section>
+  </main>
+
+  <nav class="tabbar">
+    <button data-tab="today" class="active"><span class="ico">&#127869;&#65039;</span><span>Today</span></button>
+    <button data-tab="history"><span class="ico">&#128202;</span><span>History</span></button>
+    <button data-tab="settings"><span class="ico">&#9881;&#65039;</span><span>Settings</span></button>
+  </nav>
+
+  <input type="file" id="cameraInput" accept="image/*" capture="environment" hidden>
+  <input type="file" id="galleryInput" accept="image/*" hidden>
+
+  <div id="loading" class="overlay" hidden>
+    <div class="spinner"></div>
+    <p id="loadingText">Analysing your food&hellip;</p>
+  </div>
+  <div id="toast" role="status" aria-live="polite"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
