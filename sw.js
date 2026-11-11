@@ -1,6 +1,6 @@
 // Offline support: network-first for the app's own files, cache as fallback.
 // AI API calls (other origins) are never cached.
-const CACHE = 'food-tracker-v2';
+const CACHE = 'food-tracker-v3';
 const ASSETS = [
   './',
   './index.html',
