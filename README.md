@@ -9,6 +9,16 @@ Take a photo of what you eat and get an estimate of the weight, calories, macros
 
 > Photo estimates are approximate (often within 20–30%). Adjust the grams after each photo for better accuracy.
 
+## Screenshots
+
+| Today | Meals | Review a photo |
+|:---:|:---:|:---:|
+| <img src="screenshots/1-today.jpg" width="240" alt="Today screen: calorie ring and macro progress bars"> | <img src="screenshots/2-meals.jpg" width="240" alt="Meals grouped into breakfast, lunch and snacks"> | <img src="screenshots/3-review.jpg" width="240" alt="Review screen: AI-detected foods with adjustable grams"> |
+| **History** | **Settings** | **Dark mode** |
+| <img src="screenshots/4-history.jpg" width="240" alt="History: calories per day chart and averages"> | <img src="screenshots/5-settings.jpg" width="240" alt="Settings: AI provider and API key"> | <img src="screenshots/6-dark-mode.jpg" width="240" alt="Today screen in dark mode"> |
+
+*Screens shown with sample data. Food photos are illustrations.*
+
 ## 1. Get a free Gemini API key
 
 1. Go to https://aistudio.google.com/apikey and sign in with a Google account.
